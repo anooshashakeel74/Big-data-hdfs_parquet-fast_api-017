@@ -1,0 +1,86 @@
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      - CLUSTER_NAME=demo
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_namenode_http_address=namenode:9870
+    volumes:
+      - namenode-data:/hadoop/dfs/name
+    networks:
+      - hadoop-net
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    ports:
+      - "9864:9864"
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+    volumes:
+      - datanode-data:/hadoop/dfs/data
+    networks:
+      - hadoop-net
+    depends_on:
+      - namenode
+
+  pyspark-master:
+    image: apache/spark:3.5.2
+    container_name: pyspark-master
+    environment:
+      - SPARK_MODE=master
+    command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master" ]
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - hadoop-net
+
+  pyspark-worker:
+    image: apache/spark:3.5.2
+    container_name: pyspark-worker
+    environment:
+      - SPARK_MODE=worker
+    command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://pyspark-master:7077" ]
+    ports:
+      - "8081:8081"
+    networks:
+      - hadoop-net
+    depends_on:
+      - pyspark-master
+
+  app:
+    build: .
+    container_name: pyspark-app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - namenode
+      - datanode
+      - pyspark-master
+      - pyspark-worker
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload # This is correct
+    environment:
+      - HDFS_HOST=http://namenode:9870
+      - HDFS_PATH=/user/root/students.parquet
+      - SPARK_MASTER=spark://pyspark-master:7077
+      - SPARK_APP_NAME=HDFS_Spark_Crud
+      - SPARK_FS=hdfs://namenode:9000
+      - HOME=/tmp
+    networks:
+      - hadoop-net
+volumes:
+  namenode-data:
+  datanode-data:
+
+networks:
+  hadoop-net:
+    driver: bridge

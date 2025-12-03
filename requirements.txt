@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+numpy<2
+pandas<2
+pyarrow<11
+hdfs==2.7.0
